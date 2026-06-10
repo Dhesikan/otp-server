@@ -6,7 +6,7 @@ require('dotenv').config();
 
 const app = express();
 
-// ============ UPDATED CORS FOR NETLIFY + RENDER ============
+// ============ CORS FOR NETLIFY ============
 const allowedOrigins = [
     'http://localhost:3000',
     'http://localhost:5500',
@@ -65,7 +65,21 @@ function generateOTP() {
     return crypto.randomInt(100000, 999999).toString();
 }
 
-// ============ SEND OTP ENDPOINT ============
+// ============ ROOT ROUTE (Fixes "Not Found") ============
+app.get('/', (req, res) => {
+    res.json({
+        message: 'OTP Server is running!',
+        status: 'active',
+        endpoints: {
+            send_otp: '/api/send-otp (POST)',
+            verify_otp: '/api/verify-otp (POST)',
+            health: '/api/health (GET)',
+            keep_alive: '/api/keep-alive (GET)'
+        }
+    });
+});
+
+// Send OTP endpoint
 app.post('/api/send-otp', async (req, res) => {
     const { email } = req.body;
     
@@ -80,11 +94,9 @@ app.post('/api/send-otp', async (req, res) => {
     
     const otp = generateOTP();
     
-    // Store OTP with 5 minute expiry
     otpStore.set(email, {
         otp: otp,
-        expiresAt: Date.now() + 5 * 60 * 1000,
-        createdAt: new Date().toISOString()
+        expiresAt: Date.now() + 5 * 60 * 1000
     });
     
     console.log(`📝 OTP for ${email}: ${otp}`);
@@ -153,7 +165,7 @@ app.post('/api/send-otp', async (req, res) => {
     }
 });
 
-// ============ VERIFY OTP ENDPOINT ============
+// Verify OTP endpoint
 app.post('/api/verify-otp', async (req, res) => {
     const { email, otp } = req.body;
     
@@ -184,25 +196,12 @@ app.post('/api/verify-otp', async (req, res) => {
     }
     
     if (storedData.otp !== otp) {
-        const remainingAttempts = (storedData.attempts || 0) + 1;
-        storedData.attempts = remainingAttempts;
-        otpStore.set(email, storedData);
-        
-        if (remainingAttempts >= 5) {
-            otpStore.delete(email);
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Too many failed attempts. Please request a new OTP.' 
-            });
-        }
-        
         return res.status(400).json({ 
             success: false, 
             message: 'Invalid OTP. Please try again.' 
         });
     }
     
-    // Success - clear OTP
     otpStore.delete(email);
     console.log(`✅ OTP verified for ${email}`);
     
@@ -212,7 +211,7 @@ app.post('/api/verify-otp', async (req, res) => {
     });
 });
 
-// ============ HEALTH CHECK ENDPOINT ============
+// Health check endpoint
 app.get('/api/health', (req, res) => {
     res.json({ 
         status: 'OK', 
@@ -222,23 +221,16 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// ============ KEEP-ALIVE ENDPOINT (Prevents cold starts) ============
+// Keep-alive endpoint (prevents cold starts)
 app.get('/api/keep-alive', (req, res) => {
-    res.json({ 
-        status: 'alive', 
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime()
-    });
+    res.json({ status: 'alive', timestamp: new Date().toISOString() });
 });
 
-// ============ START SERVER ============
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-    console.log(`\n🚀 Nodemailer OTP Server running on port ${PORT}`);
+    console.log(`\n🚀 OTP Server running on port ${PORT}`);
     console.log(`📧 Email configured for: ${process.env.EMAIL_USER}`);
-    console.log(`📍 Send OTP: POST http://localhost:${PORT}/api/send-otp`);
-    console.log(`📍 Verify OTP: POST http://localhost:${PORT}/api/verify-otp`);
-    console.log(`📍 Keep Alive: GET http://localhost:${PORT}/api/keep-alive`);
-    console.log(`📍 Health Check: GET http://localhost:${PORT}/api/health`);
+    console.log(`📍 Root: https://localhost:${PORT}/`);
+    console.log(`📍 Health: https://localhost:${PORT}/api/health`);
     console.log(`=================================\n`);
 });
